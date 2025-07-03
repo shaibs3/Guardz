@@ -1,5 +1,5 @@
 # Variables
-BINARY_NAME=torq
+BINARY_NAME=guardz
 BINARY_UNIX=$(BINARY_NAME)_unix
 DOCKER_IMAGE=guardz
 DOCKER_TAG=latest
