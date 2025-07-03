@@ -1,0 +1,37 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://dreamuser:dreampass@postgres:5432/dreamdb?sslmode=disable
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=dreamuser
+      - KAFKA_TOPIC=user-processes
+      - POSTGRES_PASSWORD=dreampass
+      - POSTGRES_DB=dreamdb
+      - POSTGRES_PORT=5432
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: dreamuser
+      POSTGRES_PASSWORD: dreampass
+      POSTGRES_DB: dreamdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local
