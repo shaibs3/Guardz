@@ -177,4 +177,4 @@ jobs:
             rm -rf Guardz || true
             git clone https://github.com/shaibs3/Guardz.git
             cd Guardz
-            sudo make compose-up
+            sudo docker compose up
