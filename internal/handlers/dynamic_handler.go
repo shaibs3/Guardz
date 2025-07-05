@@ -25,12 +25,12 @@ func NewDynamicHandler(dbProvider lookup.DbProvider) *DynamicHandler {
 
 // RegisterRoutes registers the routes for this handler
 func (h *DynamicHandler) RegisterRoutes(router *mux.Router, logger *zap.Logger) {
-	router.HandleFunc("/{path:.*}", h.handleDynamicPath).Methods("GET")
+	router.HandleFunc("/{path:.*}", h.handleGetPath).Methods("GET")
 	router.HandleFunc("/{path:.*}", h.handlePostPath).Methods("POST")
 }
 
-// handleDynamicPath handles GET requests to any arbitrary path
-func (h *DynamicHandler) handleDynamicPath(w http.ResponseWriter, req *http.Request) {
+// handleGetPath handles GET requests to any arbitrary path
+func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	path := strings.TrimPrefix(req.URL.Path, "/")
 	if path == "" {
