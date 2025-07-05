@@ -24,7 +24,7 @@ BINARY_DIR=bin
 # Make is verbose in Linux. Make it silent.
 MAKEFLAGS += --silent
 
-.PHONY: all build clean run test deps docker-build docker-run docker-stop docker-push docker-build-push docker-clean help
+.PHONY: all build clean run test deps docker-build docker-run docker-stop docker-push docker-build-push docker-clean help db-clean
 
 ## Default: run all
 all: clean deps test build
@@ -156,4 +156,9 @@ help:
 	@echo "  docker-build-push - Build and push Docker image"
 	@echo "  docker-clean  - Clean Docker images"
 	@echo "  security      - Run security scan"
+	@echo "  db-clean      - Truncate all tables in the Postgres database"
 	@echo "  help          - Show this help message"
+
+## db-clean target
+db-clean:
+	psql "$(PG_CONN)" -c "TRUNCATE TABLE urls, paths RESTART IDENTITY CASCADE;"
