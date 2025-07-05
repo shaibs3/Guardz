@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"github.com/shaibs3/Guardz/internal/db_model"
 	"io"
 	"net/http"
@@ -78,14 +79,35 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 				return
 			}
 
+			// Create a custom HTTP client that handles redirects
+			client := &http.Client{
+				Timeout: 30 * time.Second,
+				CheckRedirect: func(req *http.Request, via []*http.Request) error {
+					// Limit redirects to prevent infinite loops
+					if len(via) >= 10 {
+						return fmt.Errorf("too many redirects")
+					}
+					return nil
+				},
+			}
+
 			// Make the HTTP request
-			resp, err := http.DefaultClient.Do(httpReq)
+			resp, err := client.Do(httpReq)
 			if err != nil {
 				result["error"] = err.Error()
 				resultChan <- urlResult{index: index, result: result}
 				return
 			}
 			defer resp.Body.Close()
+
+			// Track redirect information
+			if len(resp.Request.URL.String()) != len(urlRec.URL) || resp.Request.URL.String() != urlRec.URL {
+				result["original_url"] = urlRec.URL
+				result["final_url"] = resp.Request.URL.String()
+				result["redirected"] = true
+			} else {
+				result["redirected"] = false
+			}
 
 			// Read response body
 			body, err := io.ReadAll(resp.Body)
