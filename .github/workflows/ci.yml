@@ -161,7 +161,7 @@ jobs:
       with:
         name: docker-image
         path: ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
-  deploy:
+  deployssh:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
