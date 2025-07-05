@@ -161,8 +161,8 @@ jobs:
       with:
         name: docker-image
         path: ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
-  deployssh:
-    needs: build
+  deploy:
+    needs: docker-build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
@@ -174,4 +174,6 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: 22
           script: |
-            echo "Deployment successful"
+            git clone https://github.com/shaibs3/Guardz.git
+            cd Guardz
+            make compose-up
