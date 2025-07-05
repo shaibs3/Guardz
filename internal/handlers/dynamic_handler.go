@@ -9,9 +9,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/shaibs3/Guardz/internal/db_model"
 
@@ -46,6 +48,17 @@ func validateURL(urlStr string) error {
 	// Only allow http and https schemes
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return fmt.Errorf("unsupported scheme: %s (only http and https are allowed)", parsedURL.Scheme)
+	}
+
+	// Allowlist for test servers (set in tests)
+	if allowlist := os.Getenv("GUARDZ_TEST_ALLOWLIST"); allowlist != "" {
+		allowed := strings.Split(allowlist, ",")
+		host := parsedURL.Hostname()
+		for _, a := range allowed {
+			if host == a {
+				return nil
+			}
+		}
 	}
 
 	// Check for private/internal IP addresses (SSRF protection)
@@ -190,6 +203,9 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 				result["warning"] = "Response truncated due to size limit (1MB)"
 			}
 
+			// Debug print: log the length of the body
+			fmt.Printf("[DEBUG] URL: %s, Content-Type: %s, Body length: %d\n", urlRec.URL, resp.Header.Get("Content-Type"), len(body))
+
 			// Track redirect information
 			if len(resp.Request.URL.String()) != len(urlRec.URL) || resp.Request.URL.String() != urlRec.URL {
 				result["original_url"] = urlRec.URL
@@ -205,7 +221,18 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 
 			// If not text, encode as base64
 			if strings.HasPrefix(contentType, "text/") || strings.Contains(contentType, "json") || strings.Contains(contentType, "xml") {
-				result["content"] = string(body)
+				// Truncate to 1MB if needed
+				text := body
+				if len(text) > 1<<20 {
+					text = text[:1<<20]
+				}
+				if !utf8.Valid(text) {
+					// Not valid UTF-8, encode as base64
+					result["content"] = base64.StdEncoding.EncodeToString(text)
+					result["content_encoding"] = "base64"
+				} else {
+					result["content"] = string(text)
+				}
 			} else {
 				result["content"] = base64.StdEncoding.EncodeToString(body)
 			}
