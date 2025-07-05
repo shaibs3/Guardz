@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -54,16 +53,15 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 			results = append(results, result)
 			continue
 		}
-		func() {
-			cerr := resp.Body.Close()
-			if cerr != nil {
-				fmt.Print("Error closing rows: ", cerr)
-
-			}
-		}()
 		body, err := io.ReadAll(resp.Body)
+		cerr := resp.Body.Close()
 		if err != nil {
 			result["error"] = err.Error()
+			results = append(results, result)
+			continue
+		}
+		if cerr != nil {
+			result["error"] = cerr.Error()
 			results = append(results, result)
 			continue
 		}
