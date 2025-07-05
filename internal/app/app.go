@@ -53,9 +53,6 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		return nil, err
 	}
 
-	// Initialize IP finder
-	//ipFinder := finder.NewIpFinder(dbProvider)
-
 	// Initialize router with handlers
 	var limiter = rate.NewLimiter(rate.Limit(cfg.RPSLimit), cfg.RPSBurst)
 

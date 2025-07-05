@@ -97,7 +97,7 @@ docker-build:
 docker-run:docker-build
 	@echo "Running Docker container..."
 	docker run -p $(PORT):$(PORT) --name $(BINARY_NAME) \
-		-e IP_DB_CONFIG='{"dbtype": "csv", "extra_details": {"file_path": "/app/TestFiles/ip_data.csv"}}' \
+		-e DB_CONFIG='{"dbtype": "csv", "extra_details": {"file_path": "/app/TestFiles/ip_data.csv"}}' \
 		$(DOCKER_IMAGE):$(DOCKER_TAG)
 
 ## Docker stop

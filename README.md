@@ -114,7 +114,7 @@ createdb -h localhost -U admin torq
 ## Example Environment Variable for DB Connection
 
 ```
-IP_DB_CONFIG='{"dbtype": "postgres", "extra_details": {"conn_str": "postgresql://admin:admin@localhost:5432/torq?sslmode=disable"}}'
+DB_CONFIG='{"dbtype": "postgres", "extra_details": {"conn_str": "postgresql://admin:admin@localhost:5432/torq?sslmode=disable"}}'
 ```
 
 ## Example Usage

@@ -29,7 +29,7 @@ func Load(logger *zap.Logger) *Config {
 		Port:        getEnv("PORT", "8080"),
 		RPSLimit:    getEnvAsInt("RPS_LIMIT", 10),
 		RPSBurst:    getEnvAsInt("RPS_BURST", 10),
-		IPDBConfig:  os.Getenv("IP_DB_CONFIG"),
+		IPDBConfig:  os.Getenv("DB_CONFIG"),
 		Environment: getEnv("ENVIRONMENT", "production"),
 		LogLevel:    getEnv("LOG_LEVEL", "info"),
 	}
