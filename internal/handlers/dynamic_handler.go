@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -53,7 +54,13 @@ func (h *DynamicHandler) handleDynamicPath(w http.ResponseWriter, req *http.Requ
 			results = append(results, result)
 			continue
 		}
-		defer resp.Body.Close()
+		func() {
+			cerr := resp.Body.Close()
+			if cerr != nil {
+				fmt.Print("Error closing rows: ", cerr)
+
+			}
+		}()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			result["error"] = err.Error()
@@ -76,7 +83,8 @@ func (h *DynamicHandler) handleDynamicPath(w http.ResponseWriter, req *http.Requ
 		"path":    path,
 		"results": results,
 	}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
 }
@@ -104,5 +112,8 @@ func (h *DynamicHandler) handlePostPath(w http.ResponseWriter, req *http.Request
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{"message": "URLs stored successfully", "path": path, "count": len(body.URLs)})
+	err := json.NewEncoder(w).Encode(map[string]interface{}{"message": "URLs stored successfully", "path": path, "count": len(body.URLs)})
+	if err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
 }

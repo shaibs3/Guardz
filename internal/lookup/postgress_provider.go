@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/avast/retry-go"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"github.com/shaibs3/Guardz/internal/db"
 	"github.com/sony/gobreaker"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"strings"
 	"time"
 )
 
@@ -70,7 +70,7 @@ func NewPostgresProvider(config DbProviderConfig, logger *zap.Logger, meter metr
 // StoreURLsForPath stores a list of URLs for a given path (atomic, bulk insert, with circuit breaker and retry)
 func (p *PostgresProvider) StoreURLsForPath(ctx context.Context, path string, urls []string) error {
 	var opErr error
-	retry.Do(
+	err := retry.Do(
 		func() error {
 			_, err := p.cb.Execute(func() (interface{}, error) {
 				tx, err := p.db.BeginTx(ctx, nil)
@@ -79,7 +79,9 @@ func (p *PostgresProvider) StoreURLsForPath(ctx context.Context, path string, ur
 				}
 				defer func() {
 					if err != nil {
-						tx.Rollback()
+						if rerr := tx.Rollback(); rerr != nil {
+							p.logger.Warn("tx.Rollback failed", zap.Error(rerr))
+						}
 					}
 				}()
 
@@ -91,31 +93,53 @@ func (p *PostgresProvider) StoreURLsForPath(ctx context.Context, path string, ur
 					RETURNING id
 				`, path).Scan(&pathID)
 				if err != nil {
-					tx.Rollback()
+					if rerr := tx.Rollback(); rerr != nil {
+						p.logger.Warn("tx.Rollback failed", zap.Error(rerr))
+					}
 					return nil, fmt.Errorf("failed to get or create path: %w", err)
 				}
 
 				if len(urls) == 0 {
-					tx.Commit()
+					if cerr := tx.Commit(); cerr != nil {
+						p.logger.Warn("tx.Commit failed", zap.Error(cerr))
+						return nil, fmt.Errorf("failed to commit transaction: %w", cerr)
+					}
 					return nil, nil
 				}
 
-				valueStrings := make([]string, 0, len(urls))
-				valueArgs := make([]interface{}, 0, len(urls))
-				for i, url := range urls {
-					valueStrings = append(valueStrings, fmt.Sprintf("($1, $%d)", i+2))
-					valueArgs = append(valueArgs, url)
-				}
-				args := append([]interface{}{pathID}, valueArgs...)
-				stmt := fmt.Sprintf("INSERT INTO urls (path_id, url) VALUES %s", strings.Join(valueStrings, ","))
-				_, err = tx.ExecContext(ctx, stmt, args...)
+				stmt, err := tx.Prepare(pq.CopyIn("urls", "path_id", "url"))
 				if err != nil {
-					tx.Rollback()
-					return nil, fmt.Errorf("failed to bulk insert urls: %w", err)
+					if rerr := tx.Rollback(); rerr != nil {
+						p.logger.Warn("tx.Rollback failed", zap.Error(rerr))
+					}
+					return nil, fmt.Errorf("failed to prepare bulk insert: %w", err)
 				}
+				defer func() {
+					cerr := stmt.Close()
+					if cerr != nil {
+						p.logger.Warn("stmt.Close failed", zap.Error(cerr))
+					}
+				}()
 
-				if err := tx.Commit(); err != nil {
-					return nil, fmt.Errorf("failed to commit transaction: %w", err)
+				for _, url := range urls {
+					_, err = stmt.Exec(pathID, url)
+					if err != nil {
+						if rerr := tx.Rollback(); rerr != nil {
+							p.logger.Warn("tx.Rollback failed", zap.Error(rerr))
+						}
+						return nil, fmt.Errorf("failed to exec bulk insert: %w", err)
+					}
+				}
+				_, err = stmt.Exec()
+				if err != nil {
+					if rerr := tx.Rollback(); rerr != nil {
+						p.logger.Warn("tx.Rollback failed", zap.Error(rerr))
+					}
+					return nil, fmt.Errorf("failed to finalize bulk insert: %w", err)
+				}
+				if cerr := tx.Commit(); cerr != nil {
+					p.logger.Warn("tx.Commit failed", zap.Error(cerr))
+					return nil, fmt.Errorf("failed to commit transaction: %w", cerr)
 				}
 				return nil, nil
 			})
@@ -128,6 +152,9 @@ func (p *PostgresProvider) StoreURLsForPath(ctx context.Context, path string, ur
 			p.logger.Warn("retrying StoreURLsForPath", zap.Uint("attempt", n+1), zap.Error(err))
 		}),
 	)
+	if err != nil {
+		return err
+	}
 	return opErr
 }
 
@@ -135,7 +162,7 @@ func (p *PostgresProvider) StoreURLsForPath(ctx context.Context, path string, ur
 func (p *PostgresProvider) GetURLsByPath(ctx context.Context, path string) ([]db.URLRecord, error) {
 	var result []db.URLRecord
 	var opErr error
-	retry.Do(
+	err := retry.Do(
 		func() error {
 			res, err := p.cb.Execute(func() (interface{}, error) {
 				recs, err := db.GetURLsByPath(p.db, path)
@@ -153,5 +180,8 @@ func (p *PostgresProvider) GetURLsByPath(ctx context.Context, path string) ([]db
 			p.logger.Warn("retrying GetURLsByPath", zap.Uint("attempt", n+1), zap.Error(err))
 		}),
 	)
+	if err != nil {
+		return nil, err
+	}
 	return result, opErr
 }

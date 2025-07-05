@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 )
 
 // GetOrCreatePath inserts a path if it doesn't exist and returns its ID
@@ -35,7 +36,12 @@ func GetURLsByPath(db *sql.DB, path string) ([]URLRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		cerr := rows.Close()
+		if cerr != nil {
+			fmt.Print("Error closing rows: ", cerr)
+		}
+	}()
 	for rows.Next() {
 		var rec URLRecord
 		err := rows.Scan(&rec.ID, &rec.PathID, &rec.URL)

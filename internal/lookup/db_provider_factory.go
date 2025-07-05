@@ -52,10 +52,11 @@ func (f *DbProviderFactory) CreateProvider(configJSON string) (DbProvider, error
 		telemetryMeter = nil
 	}
 	switch config.DbType {
-	//case DbTypeCSV:
-	//	return NewCSVProvider(config, f.logger, telemetryMeter)
 	case DbTypePostgres:
 		return NewPostgresProvider(config, f.logger, telemetryMeter)
+	case DbTypeMemory:
+		f.logger.Info("Using InMemoryProvider for DB")
+		return NewInMemoryProvider(), nil
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", config.DbType)
 	}

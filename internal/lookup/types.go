@@ -6,8 +6,8 @@ type DbType string
 const (
 	DbTypeCSV      DbType = "csv"
 	DbTypePostgres DbType = "postgres"
+	DbTypeMemory   DbType = "memory"
 	// Add more database types here as you implement them
-	// DbTypeMemory   DbType = "memory"
 )
 
 // String returns the string representation of the database type
@@ -18,7 +18,7 @@ func (dt DbType) String() string {
 // IsValid checks if the database type is supported
 func (dt DbType) IsValid() bool {
 	switch dt {
-	case DbTypeCSV, DbTypePostgres:
+	case DbTypeCSV, DbTypePostgres, DbTypeMemory:
 		return true
 	default:
 		return false

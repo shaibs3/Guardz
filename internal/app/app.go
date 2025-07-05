@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/shaibs3/Guardz/internal/handlers"
 	"github.com/shaibs3/Guardz/internal/router"
@@ -33,13 +34,24 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		return nil, err
 	}
 
-	// Initialize IP DB provider
-	dbProviderFactory := lookup.NewDbProviderFactory(logger, tel)
-	dbProvider, err := dbProviderFactory.CreateProvider(cfg.IPDBConfig)
+	// Use the factory to create the DB provider
+	factory := lookup.NewDbProviderFactory(logger, tel)
+	var configJSON string
+	if cfg.IPDBConfig == "" {
+		// Default to in-memory provider
+		config := lookup.DbProviderConfig{
+			DbType:       lookup.DbTypeMemory,
+			ExtraDetails: map[string]interface{}{},
+		}
+		b, _ := json.Marshal(config)
+		configJSON = string(b)
+	} else {
+		configJSON = cfg.IPDBConfig
+	}
+	dbProvider, err := factory.CreateProvider(configJSON)
 	if err != nil {
 		return nil, err
 	}
-	logger.Info("database provider initialized")
 
 	// Initialize IP finder
 	//ipFinder := finder.NewIpFinder(dbProvider)
@@ -50,7 +62,6 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 	// Create handlers
 	handlerList := []router.Handler{
 		handlers.NewDynamicHandler(dbProvider),
-		//handlers.NewIPHandler(ipFinder),
 	}
 
 	appRouter := router.NewRouter(limiter, tel, logger, handlerList)
