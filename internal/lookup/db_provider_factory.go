@@ -52,8 +52,8 @@ func (f *DbProviderFactory) CreateProvider(configJSON string) (DbProvider, error
 		telemetryMeter = nil
 	}
 	switch config.DbType {
-	case DbTypeCSV:
-		return NewCSVProvider(config, f.logger, telemetryMeter)
+	//case DbTypeCSV:
+	//	return NewCSVProvider(config, f.logger, telemetryMeter)
 	case DbTypePostgres:
 		return NewPostgresProvider(config, f.logger, telemetryMeter)
 	default:

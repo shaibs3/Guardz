@@ -35,7 +35,7 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 
 	// Initialize IP DB provider
 	dbProviderFactory := lookup.NewDbProviderFactory(logger, tel)
-	_, err = dbProviderFactory.CreateProvider(cfg.IPDBConfig)
+	dbProvider, err := dbProviderFactory.CreateProvider(cfg.IPDBConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 
 	// Create handlers
 	handlerList := []router.Handler{
-		handlers.NewDynamicHandler(),
+		handlers.NewDynamicHandler(dbProvider),
 		//handlers.NewIPHandler(ipFinder),
 	}
 
