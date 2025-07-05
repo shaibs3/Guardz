@@ -25,7 +25,7 @@ BINARY_DIR=bin
 # Make is verbose in Linux. Make it silent.
 MAKEFLAGS += --silent
 
-.PHONY: all build clean run test deps docker-build docker-run docker-stop docker-push docker-build-push docker-clean help db-clean
+.PHONY: all build clean run test deps docker-build docker-run docker-stop docker-push docker-build-push docker-clean help db-clean compose-up compose-down test-load
 
 ## Default: run all
 all: clean deps test build
@@ -137,6 +137,11 @@ security:
 		gosec ./...; \
 	fi
 
+## Load testing with 100 requests
+test-load:
+	@echo "Running load test with 100 POST/GET requests..."
+	./test_script.sh
+
 ## Show help
 help:
 	@echo "Available commands:"
@@ -146,6 +151,7 @@ help:
 	@echo "  dev           - Run with hot reload (requires air)"
 	@echo "  test          - Run tests"
 	@echo "  test-coverage - Run tests with coverage report"
+	@echo "  test-load     - Run load test with 100 POST/GET requests"
 	@echo "  deps          - Get dependencies"
 	@echo "  install-deps  - Install dependencies"
 	@echo "  fmt           - Format code"
@@ -156,6 +162,8 @@ help:
 	@echo "  docker-push   - Push Docker image to Docker Hub"
 	@echo "  docker-build-push - Build and push Docker image"
 	@echo "  docker-clean  - Clean Docker images"
+	@echo "  compose-up    - Start all services with docker-compose"
+	@echo "  compose-down  - Stop all services with docker-compose"
 	@echo "  security      - Run security scan"
 	@echo "  db-clean      - Truncate all tables in the Postgres database"
 	@echo "  help          - Show this help message"
@@ -163,3 +171,13 @@ help:
 ## db_model-clean target
 db-clean:
 	psql "$(PG_CONN)" -c "TRUNCATE TABLE urls, paths RESTART IDENTITY CASCADE;"
+
+## Docker Compose up
+docker-compose-up compose-up:
+	@echo "Starting all services with docker-compose..."
+	docker-compose up --build
+
+## Docker Compose down
+docker-compose-down compose-down:
+	@echo "Stopping all services with docker-compose..."
+	docker-compose down

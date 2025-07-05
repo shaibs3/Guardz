@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24.2-alpine AS builder
 
 RUN apk add --no-cache make
 
@@ -23,11 +23,9 @@ FROM alpine:latest
 WORKDIR /app
 
 # Copy the binary from builder
-COPY --from=builder /app/dream .
-COPY --from=builder /app/config.yaml .
-
+COPY --from=builder /app/bin/guardz .
 # Expose the application port
 EXPOSE 8080
 
 # Run the application
-CMD ["./dream"] 
+CMD ["/app/guardz"]

@@ -4,13 +4,15 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=postgres://dreamuser:dreampass@postgres:5432/dreamdb?sslmode=disable
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USER=dreamuser
-      - KAFKA_TOPIC=user-processes
-      - POSTGRES_PASSWORD=dreampass
-      - POSTGRES_DB=dreamdb
-      - POSTGRES_PORT=5432
+      DB_CONFIG: >
+        {"dbtype": "postgres", "extra_details": {"conn_str": "postgresql://admin:admin@postgres:5432/guardz?sslmode=disable"}}
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: guardz
+      POSTGRES_PORT: 5432
+    depends_on:
+      - postgres
     networks:
       - app-network
 
@@ -18,9 +20,9 @@ services:
     image: postgres:15
     restart: always
     environment:
-      POSTGRES_USER: dreamuser
-      POSTGRES_PASSWORD: dreampass
-      POSTGRES_DB: dreamdb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: guardz
     ports:
       - "5432:5432"
     volumes:
