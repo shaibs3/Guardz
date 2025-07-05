@@ -174,7 +174,8 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: 22
           script: |
-            docker compose down || true
+            sudo docker compose down || true
+            sudo docker container prune -f
             rm -rf Guardz || true
             git clone https://github.com/shaibs3/Guardz.git
             cd Guardz
