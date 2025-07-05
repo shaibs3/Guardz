@@ -1,11 +1,15 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/shaibs3/Guardz/internal/db_model"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/shaibs3/Guardz/internal/lookup"
@@ -42,39 +46,80 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	results := make([]map[string]interface{}, 0, len(urls))
-	for _, urlRec := range urls {
-		result := map[string]interface{}{
-			"url": urlRec.URL,
-		}
-		resp, err := http.Get(urlRec.URL)
-		if err != nil {
-			result["error"] = err.Error()
-			results = append(results, result)
-			continue
-		}
-		body, err := io.ReadAll(resp.Body)
-		cerr := resp.Body.Close()
-		if err != nil {
-			result["error"] = err.Error()
-			results = append(results, result)
-			continue
-		}
-		if cerr != nil {
-			result["error"] = cerr.Error()
-			results = append(results, result)
-			continue
-		}
-		contentType := resp.Header.Get("Content-Type")
-		result["content_type"] = contentType
-		result["status_code"] = resp.StatusCode
-		// If not text, encode as base64
-		if strings.HasPrefix(contentType, "text/") || strings.Contains(contentType, "json") || strings.Contains(contentType, "xml") {
-			result["content"] = string(body)
-		} else {
-			result["content"] = base64.StdEncoding.EncodeToString(body)
-		}
-		results = append(results, result)
+	// Create a channel to collect results
+	type urlResult struct {
+		index  int
+		result map[string]interface{}
+	}
+	resultChan := make(chan urlResult, len(urls))
+
+	// Create a WaitGroup to wait for all goroutines to complete
+	var wg sync.WaitGroup
+
+	// Fetch URLs in parallel
+	for i, urlRec := range urls {
+		wg.Add(1)
+		go func(index int, urlRec db_model.URLRecord) {
+			defer wg.Done()
+
+			result := map[string]interface{}{
+				"url": urlRec.URL,
+			}
+
+			// Create a context with timeout for the HTTP request
+			ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
+			defer cancel()
+
+			// Create HTTP request with context
+			httpReq, err := http.NewRequestWithContext(ctx, "GET", urlRec.URL, nil)
+			if err != nil {
+				result["error"] = err.Error()
+				resultChan <- urlResult{index: index, result: result}
+				return
+			}
+
+			// Make the HTTP request
+			resp, err := http.DefaultClient.Do(httpReq)
+			if err != nil {
+				result["error"] = err.Error()
+				resultChan <- urlResult{index: index, result: result}
+				return
+			}
+			defer resp.Body.Close()
+
+			// Read response body
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				result["error"] = err.Error()
+				resultChan <- urlResult{index: index, result: result}
+				return
+			}
+
+			contentType := resp.Header.Get("Content-Type")
+			result["content_type"] = contentType
+			result["status_code"] = resp.StatusCode
+
+			// If not text, encode as base64
+			if strings.HasPrefix(contentType, "text/") || strings.Contains(contentType, "json") || strings.Contains(contentType, "xml") {
+				result["content"] = string(body)
+			} else {
+				result["content"] = base64.StdEncoding.EncodeToString(body)
+			}
+
+			resultChan <- urlResult{index: index, result: result}
+		}(i, urlRec)
+	}
+
+	// Close the channel when all goroutines complete
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Collect results in order
+	results := make([]map[string]interface{}, len(urls))
+	for result := range resultChan {
+		results[result.index] = result.result
 	}
 
 	response := map[string]interface{}{
