@@ -61,7 +61,11 @@ func TestDynamicHandler_RedirectHandling(t *testing.T) {
 			// Final destination
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Final destination reached"))
+			_, err := w.Write([]byte("Final destination reached"))
+			if err != nil {
+				http.Error(w, "Failed to write response", http.StatusInternalServerError)
+				return
+			}
 		case "/single-redirect":
 			// Single redirect
 			http.Redirect(w, r, "/final", http.StatusMovedPermanently)
@@ -69,7 +73,11 @@ func TestDynamicHandler_RedirectHandling(t *testing.T) {
 			// No redirect
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("No redirect"))
+			_, err := w.Write([]byte("No redirect"))
+			if err != nil {
+				http.Error(w, "Failed to write response", http.StatusInternalServerError)
+				return
+			}
 		default:
 			http.NotFound(w, r)
 		}
@@ -145,7 +153,11 @@ func TestDynamicHandler_RedirectLoopProtection(t *testing.T) {
 			http.Redirect(w, r, "/loop", http.StatusMovedPermanently)
 		} else {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Should not reach here"))
+			_, err := w.Write([]byte("Should not reach here"))
+			if err != nil {
+				http.Error(w, "Failed to write response", http.StatusInternalServerError)
+				return
+			}
 		}
 	}))
 	defer mockServer.Close()
@@ -181,4 +193,196 @@ func TestDynamicHandler_RedirectLoopProtection(t *testing.T) {
 
 	result := results[0].(map[string]interface{})
 	require.Contains(t, result["error"], "too many redirects", "should detect redirect loop")
+}
+
+func TestDynamicHandler_MultipleContentTypes(t *testing.T) {
+	// Create a mock server that returns different content types
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/json":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, err := w.Write([]byte(`{"name": "test", "value": 123, "active": true}`))
+			if err != nil {
+				http.Error(w, "Failed to write response", http.StatusInternalServerError)
+				return
+			}
+		case "/image":
+			w.Header().Set("Content-Type", "image/png")
+			w.WriteHeader(http.StatusOK)
+			// Create a minimal PNG file (1x1 transparent pixel)
+			pngData := []byte{
+				0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+				0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+				0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1 image
+				0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, // bit depth, color type, etc.
+				0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, // IDAT chunk
+				0x54, 0x08, 0x99, 0x01, 0x01, 0x00, 0x00, 0xFF, // compressed data
+				0xFF, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, // more data
+				0x21, 0xBC, 0x33, 0x00, 0x00, 0x00, 0x00, 0x49, // IEND chunk
+				0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+			}
+			_, err := w.Write(pngData)
+			if err != nil {
+				http.Error(w, "Failed to write response", http.StatusInternalServerError)
+				return
+			}
+		case "/text":
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			_, err := w.Write([]byte("This is plain text content with some special characters: áéíóú ñ ç"))
+			if err != nil {
+				http.Error(w, "Failed to write response", http.StatusInternalServerError)
+				return
+			}
+		case "/html":
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusOK)
+			_, err := w.Write([]byte(`<!DOCTYPE html><html><head><title>Test</title></head><body><h1>Hello World</h1></body></html>`))
+			if err != nil {
+				http.Error(w, "Failed to write response", http.StatusInternalServerError)
+				return
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer mockServer.Close()
+
+	h := setupTestHandler()
+	r := mux.NewRouter()
+	h.RegisterRoutes(r, zap.NewNop())
+
+	// Test URLs with different content types
+	testURLs := []string{
+		mockServer.URL + "/json",  // JSON content
+		mockServer.URL + "/image", // PNG image
+		mockServer.URL + "/text",  // Plain text
+		mockServer.URL + "/html",  // HTML content
+	}
+
+	// Store URLs
+	postBody := map[string]interface{}{
+		"urls": testURLs,
+	}
+	bodyBytes, _ := json.Marshal(postBody)
+	req := httptest.NewRequest(http.MethodPost, "/content-test", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code, "expected status 201")
+
+	// Fetch URLs and check content type handling
+	getReq := httptest.NewRequest(http.MethodGet, "/content-test", nil)
+	getW := httptest.NewRecorder()
+	r.ServeHTTP(getW, getReq)
+	require.Equal(t, http.StatusOK, getW.Code, "expected status 200")
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(getW.Body.Bytes(), &resp)
+	require.NoError(t, err, "failed to decode response")
+
+	results, ok := resp["results"].([]interface{})
+	require.True(t, ok, "expected results to be a slice")
+	require.Len(t, results, 4, "expected 4 results")
+
+	// Check JSON content
+	result1 := results[0].(map[string]interface{})
+	require.Equal(t, mockServer.URL+"/json", result1["url"], "JSON URL should match")
+	require.Equal(t, "application/json", result1["content_type"], "should have JSON content type")
+	require.Equal(t, float64(200), result1["status_code"], "should have 200 status")
+	require.Equal(t, `{"name": "test", "value": 123, "active": true}`, result1["content"], "should have JSON content as text")
+
+	// Check PNG image content
+	result2 := results[1].(map[string]interface{})
+	require.Equal(t, mockServer.URL+"/image", result2["url"], "Image URL should match")
+	require.Equal(t, "image/png", result2["content_type"], "should have PNG content type")
+	require.Equal(t, float64(200), result2["status_code"], "should have 200 status")
+	// PNG content should be base64 encoded
+	content2 := result2["content"].(string)
+	require.True(t, len(content2) > 0, "should have base64 encoded content")
+	// Verify it's valid base64 (contains only base64 characters)
+	require.Regexp(t, `^[A-Za-z0-9+/]*={0,2}$`, content2, "should be valid base64")
+
+	// Check plain text content
+	result3 := results[2].(map[string]interface{})
+	require.Equal(t, mockServer.URL+"/text", result3["url"], "Text URL should match")
+	require.Equal(t, "text/plain", result3["content_type"], "should have plain text content type")
+	require.Equal(t, float64(200), result3["status_code"], "should have 200 status")
+	require.Equal(t, "This is plain text content with some special characters: áéíóú ñ ç", result3["content"], "should have text content")
+
+	// Check HTML content
+	result4 := results[3].(map[string]interface{})
+	require.Equal(t, mockServer.URL+"/html", result4["url"], "HTML URL should match")
+	require.Equal(t, "text/html", result4["content_type"], "should have HTML content type")
+	require.Equal(t, float64(200), result4["status_code"], "should have 200 status")
+	require.Equal(t, `<!DOCTYPE html><html><head><title>Test</title></head><body><h1>Hello World</h1></body></html>`, result4["content"], "should have HTML content as text")
+}
+
+func TestDynamicHandler_RealURLsContentTypes(t *testing.T) {
+	// Skip this test if running in CI or if network is not available
+	if testing.Short() {
+		t.Skip("Skipping real URL test in short mode")
+	}
+
+	h := setupTestHandler()
+	r := mux.NewRouter()
+	h.RegisterRoutes(r, zap.NewNop())
+
+	// Real URLs with different content types
+	testURLs := []string{
+		"https://httpbin.org/json",       // JSON content
+		"https://httpbin.org/image/png",  // PNG image
+		"https://httpbin.org/robots.txt", // Plain text
+	}
+
+	// Store URLs
+	postBody := map[string]interface{}{
+		"urls": testURLs,
+	}
+	bodyBytes, _ := json.Marshal(postBody)
+	req := httptest.NewRequest(http.MethodPost, "/real-content-test", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code, "expected status 201")
+
+	// Fetch URLs and check content type handling
+	getReq := httptest.NewRequest(http.MethodGet, "/real-content-test", nil)
+	getW := httptest.NewRecorder()
+	r.ServeHTTP(getW, getReq)
+	require.Equal(t, http.StatusOK, getW.Code, "expected status 200")
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(getW.Body.Bytes(), &resp)
+	require.NoError(t, err, "failed to decode response")
+
+	results, ok := resp["results"].([]interface{})
+	require.True(t, ok, "expected results to be a slice")
+	require.Len(t, results, 3, "expected 3 results")
+
+	// Check JSON content
+	result1 := results[0].(map[string]interface{})
+	require.Equal(t, "https://httpbin.org/json", result1["url"], "JSON URL should match")
+	require.Equal(t, "application/json", result1["content_type"], "should have JSON content type")
+	require.Equal(t, float64(200), result1["status_code"], "should have 200 status")
+	content1 := result1["content"].(string)
+	require.Contains(t, content1, "slideshow", "should contain expected JSON content")
+
+	// Check PNG image content
+	result2 := results[1].(map[string]interface{})
+	require.Equal(t, "https://httpbin.org/image/png", result2["url"], "Image URL should match")
+	require.Equal(t, "image/png", result2["content_type"], "should have PNG content type")
+	require.Equal(t, float64(200), result2["status_code"], "should have 200 status")
+	content2 := result2["content"].(string)
+	require.True(t, len(content2) > 0, "should have base64 encoded content")
+	require.Regexp(t, `^[A-Za-z0-9+/]*={0,2}$`, content2, "should be valid base64")
+
+	// Check plain text content
+	result3 := results[2].(map[string]interface{})
+	require.Equal(t, "https://httpbin.org/robots.txt", result3["url"], "Text URL should match")
+	require.Equal(t, "text/plain", result3["content_type"], "should have plain text content type")
+	require.Equal(t, float64(200), result3["status_code"], "should have 200 status")
+	content3 := result3["content"].(string)
+	require.Contains(t, content3, "User-agent", "should contain expected text content")
 }

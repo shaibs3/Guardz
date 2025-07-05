@@ -5,12 +5,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/shaibs3/Guardz/internal/db_model"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/shaibs3/Guardz/internal/db_model"
 
 	"github.com/gorilla/mux"
 	"github.com/shaibs3/Guardz/internal/lookup"
@@ -98,7 +99,19 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 				resultChan <- urlResult{index: index, result: result}
 				return
 			}
-			defer resp.Body.Close()
+			// Read response body
+			body, err := io.ReadAll(resp.Body)
+			cerr := resp.Body.Close()
+			if err != nil {
+				result["error"] = err.Error()
+				resultChan <- urlResult{index: index, result: result}
+				return
+			}
+			if cerr != nil {
+				result["error"] = cerr.Error()
+				resultChan <- urlResult{index: index, result: result}
+				return
+			}
 
 			// Track redirect information
 			if len(resp.Request.URL.String()) != len(urlRec.URL) || resp.Request.URL.String() != urlRec.URL {
@@ -107,14 +120,6 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 				result["redirected"] = true
 			} else {
 				result["redirected"] = false
-			}
-
-			// Read response body
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				result["error"] = err.Error()
-				resultChan <- urlResult{index: index, result: result}
-				return
 			}
 
 			contentType := resp.Header.Get("Content-Type")
