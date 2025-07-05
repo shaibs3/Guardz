@@ -1,15 +1,14 @@
 package router
 
 import (
-	"golang.org/x/time/rate"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/shaibs3/Guardz/internal/telemetry"
+	"golang.org/x/time/rate"
 
-	"github.com/shaibs3/Guardz/internal/finder"
 	"github.com/shaibs3/Guardz/internal/service_health"
+	"github.com/shaibs3/Guardz/internal/telemetry"
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -18,16 +17,22 @@ import (
 	"go.uber.org/zap"
 )
 
+// Handler represents a generic handler interface
+type Handler interface {
+	RegisterRoutes(router *mux.Router, logger *zap.Logger)
+}
+
 // Router handles all routing logic and middleware setup
 type Router struct {
 	router        *mux.Router
 	rateLimiter   *rate.Limiter
 	logger        *zap.Logger
 	routerMetrics *HTTPMetrics
+	handlers      []Handler
 }
 
 // NewRouter creates a new router instance
-func NewRouter(rateLimiter *rate.Limiter, telemetry *telemetry.Telemetry, logger *zap.Logger) *Router {
+func NewRouter(rateLimiter *rate.Limiter, telemetry *telemetry.Telemetry, logger *zap.Logger, handlers []Handler) *Router {
 	httpMetrics := NewHTTPMetrics(telemetry.Meter, logger.Named("metrics"))
 
 	r := &Router{
@@ -35,16 +40,17 @@ func NewRouter(rateLimiter *rate.Limiter, telemetry *telemetry.Telemetry, logger
 		rateLimiter:   rateLimiter,
 		logger:        logger.Named("router"),
 		routerMetrics: httpMetrics,
+		handlers:      handlers,
 	}
 	return r
 }
 
 // CreateServer creates and configures a complete HTTP server with all routes and middleware
-func (router *Router) CreateServer(port string, ipFinder *finder.IpFinder) *http.Server {
+func (router *Router) CreateServer(port string) *http.Server {
 	router.logger.Info("creating HTTP server", zap.String("port", port))
 
 	// Setup routes
-	router.setupRoutes(ipFinder)
+	router.setupRoutes()
 
 	// Setup middleware
 	handler := router.setupMiddleware()
@@ -68,7 +74,7 @@ func (router *Router) CreateServer(port string, ipFinder *finder.IpFinder) *http
 }
 
 // setupRoutes configures all application routes (private method)
-func (router *Router) setupRoutes(ipFinder *finder.IpFinder) {
+func (router *Router) setupRoutes() {
 	router.logger.Info("setting up application routes")
 
 	// Health check endpoints
@@ -78,8 +84,10 @@ func (router *Router) setupRoutes(ipFinder *finder.IpFinder) {
 	// Metrics endpoint
 	router.router.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
-	// API endpoints
-	router.router.HandleFunc("/v1/find-country", ipFinder.FindIpHandler).Methods("GET")
+	// Register routes from all handlers
+	for _, handler := range router.handlers {
+		handler.RegisterRoutes(router.router, router.logger)
+	}
 
 	router.logger.Info("routes configured successfully")
 }
