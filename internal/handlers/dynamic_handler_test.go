@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/shaibs3/Guardz/internal/lookup"
@@ -385,4 +386,229 @@ func TestDynamicHandler_RealURLsContentTypes(t *testing.T) {
 	require.Equal(t, float64(200), result3["status_code"], "should have 200 status")
 	content3 := result3["content"].(string)
 	require.Contains(t, content3, "User-agent", "should contain expected text content")
+}
+
+func TestDynamicHandler_SecurityValidation(t *testing.T) {
+	h := setupTestHandler()
+	r := mux.NewRouter()
+	h.RegisterRoutes(r, zap.NewNop())
+
+	// Test various security scenarios
+	testCases := []struct {
+		name        string
+		urls        []string
+		expectedErr bool
+		statusCode  int
+	}{
+		{
+			name:        "SSRF - localhost",
+			urls:        []string{"http://localhost:8080/api"},
+			expectedErr: true,
+			statusCode:  http.StatusBadRequest,
+		},
+		{
+			name:        "SSRF - 127.0.0.1",
+			urls:        []string{"http://127.0.0.1:8080/api"},
+			expectedErr: true,
+			statusCode:  http.StatusBadRequest,
+		},
+		{
+			name:        "SSRF - private IP",
+			urls:        []string{"http://192.168.1.1:8080/api"},
+			expectedErr: true,
+			statusCode:  http.StatusBadRequest,
+		},
+		{
+			name:        "SSRF - IPv6 localhost",
+			urls:        []string{"http://[::1]:8080/api"},
+			expectedErr: true,
+			statusCode:  http.StatusBadRequest,
+		},
+		{
+			name:        "Invalid scheme - file",
+			urls:        []string{"file:///etc/passwd"},
+			expectedErr: true,
+			statusCode:  http.StatusBadRequest,
+		},
+		{
+			name:        "Invalid scheme - ftp",
+			urls:        []string{"ftp://example.com/file"},
+			expectedErr: true,
+			statusCode:  http.StatusBadRequest,
+		},
+		{
+			name:        "Invalid scheme - data",
+			urls:        []string{"data:text/plain;base64,SGVsbG8="},
+			expectedErr: true,
+			statusCode:  http.StatusBadRequest,
+		},
+		{
+			name:        "Malformed URL",
+			urls:        []string{"not-a-url"},
+			expectedErr: true,
+			statusCode:  http.StatusBadRequest,
+		},
+		{
+			name:        "Valid URLs mixed with invalid",
+			urls:        []string{"https://httpbin.org/json", "http://localhost:8080/api", "https://example.com"},
+			expectedErr: false,
+			statusCode:  http.StatusCreated,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			postBody := map[string]interface{}{
+				"urls": tc.urls,
+			}
+			bodyBytes, _ := json.Marshal(postBody)
+			req := httptest.NewRequest(http.MethodPost, "/security-test", bytes.NewReader(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			require.Equal(t, tc.statusCode, w.Code, "expected status %d", tc.statusCode)
+
+			if tc.expectedErr {
+				// Should return error for all invalid URLs
+				var resp map[string]interface{}
+				err := json.Unmarshal(w.Body.Bytes(), &resp)
+				require.NoError(t, err, "failed to decode error response")
+				require.Contains(t, resp, "invalid_urls", "should contain invalid URLs list")
+			} else {
+				// Should accept valid URLs and reject invalid ones
+				var resp map[string]interface{}
+				err := json.Unmarshal(w.Body.Bytes(), &resp)
+				require.NoError(t, err, "failed to decode response")
+				require.Equal(t, "URLs stored successfully", resp["message"])
+				require.Contains(t, resp, "warning", "should warn about rejected URLs")
+			}
+		})
+	}
+}
+
+func TestDynamicHandler_ResponseSizeLimit(t *testing.T) {
+	// Create a mock server that returns large responses
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+
+		// Generate a response larger than 1MB
+		largeData := make([]byte, 2<<20) // 2MB
+		for i := range largeData {
+			largeData[i] = byte(i % 256)
+		}
+		_, err := w.Write(largeData)
+		if err != nil {
+			http.Error(w, "Failed to write response", http.StatusInternalServerError)
+			return
+		}
+	}))
+	defer mockServer.Close()
+
+	h := setupTestHandler()
+	r := mux.NewRouter()
+	h.RegisterRoutes(r, zap.NewNop())
+
+	// Store URL
+	postBody := map[string]interface{}{
+		"urls": []string{mockServer.URL},
+	}
+	bodyBytes, _ := json.Marshal(postBody)
+	req := httptest.NewRequest(http.MethodPost, "/size-test", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code, "expected status 201")
+
+	// Fetch URL and check size limit
+	getReq := httptest.NewRequest(http.MethodGet, "/size-test", nil)
+	getW := httptest.NewRecorder()
+	r.ServeHTTP(getW, getReq)
+	require.Equal(t, http.StatusOK, getW.Code, "expected status 200")
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(getW.Body.Bytes(), &resp)
+	require.NoError(t, err, "failed to decode response")
+
+	results, ok := resp["results"].([]interface{})
+	require.True(t, ok, "expected results to be a slice")
+	require.Len(t, results, 1, "expected 1 result")
+
+	result := results[0].(map[string]interface{})
+	require.Equal(t, mockServer.URL, result["url"], "URL should match")
+	require.Equal(t, float64(200), result["status_code"], "should have 200 status")
+
+	// Check that response was truncated
+	require.Contains(t, result, "warning", "should have warning about truncation")
+	require.Contains(t, result["warning"], "truncated", "should mention truncation")
+
+	// Check that content is exactly 1MB (base64 encoded)
+	content := result["content"].(string)
+	require.Equal(t, 1<<20, len(content), "content should be exactly 1MB")
+}
+
+func TestDynamicHandler_ConcurrentRequestLimit(t *testing.T) {
+	// Create a mock server that delays responses
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond) // Simulate slow response
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte("response"))
+		if err != nil {
+			http.Error(w, "Failed to write response", http.StatusInternalServerError)
+			return
+		}
+	}))
+	defer mockServer.Close()
+
+	h := setupTestHandler()
+	r := mux.NewRouter()
+	h.RegisterRoutes(r, zap.NewNop())
+
+	// Create many URLs to test concurrency limit
+	urls := make([]string, 20)
+	for i := range urls {
+		urls[i] = mockServer.URL
+	}
+
+	// Store URLs
+	postBody := map[string]interface{}{
+		"urls": urls,
+	}
+	bodyBytes, _ := json.Marshal(postBody)
+	req := httptest.NewRequest(http.MethodPost, "/concurrency-test", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code, "expected status 201")
+
+	// Fetch URLs and measure time
+	start := time.Now()
+	getReq := httptest.NewRequest(http.MethodGet, "/concurrency-test", nil)
+	getW := httptest.NewRecorder()
+	r.ServeHTTP(getW, getReq)
+	duration := time.Since(start)
+
+	require.Equal(t, http.StatusOK, getW.Code, "expected status 200")
+
+	// With 20 URLs and max 10 concurrent, should take at least 200ms (2 batches of 100ms each)
+	// But less than 2 seconds (all sequential would be 2 seconds)
+	require.True(t, duration >= 200*time.Millisecond, "should take at least 200ms due to concurrency limit")
+	require.True(t, duration < 2*time.Second, "should not take 2 seconds (all sequential)")
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(getW.Body.Bytes(), &resp)
+	require.NoError(t, err, "failed to decode response")
+
+	results, ok := resp["results"].([]interface{})
+	require.True(t, ok, "expected results to be a slice")
+	require.Len(t, results, 20, "expected 20 results")
+
+	// All results should be successful
+	for i, result := range results {
+		resultMap := result.(map[string]interface{})
+		require.Equal(t, float64(200), resultMap["status_code"], "result %d should have 200 status", i)
+		require.Equal(t, "response", resultMap["content"], "result %d should have expected content", i)
+	}
 }

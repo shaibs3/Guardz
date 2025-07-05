@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +36,56 @@ func (h *DynamicHandler) RegisterRoutes(router *mux.Router, logger *zap.Logger) 
 	router.HandleFunc("/{path:.*}", h.handlePostPath).Methods("POST")
 }
 
+// validateURL checks if a URL is safe to fetch
+func validateURL(urlStr string) error {
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("invalid URL format: %w", err)
+	}
+
+	// Only allow http and https schemes
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("unsupported scheme: %s (only http and https are allowed)", parsedURL.Scheme)
+	}
+
+	// Check for private/internal IP addresses (SSRF protection)
+	host := parsedURL.Hostname()
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return fmt.Errorf("access to localhost is not allowed")
+	}
+
+	// Parse IP to check for private ranges
+	if ip := net.ParseIP(host); ip != nil {
+		if isPrivateIP(ip) {
+			return fmt.Errorf("access to private IP %s is not allowed", ip)
+		}
+	}
+
+	return nil
+}
+
+// isPrivateIP checks if an IP address is in a private range
+func isPrivateIP(ip net.IP) bool {
+	privateBlocks := []string{
+		"127.0.0.0/8",    // localhost
+		"10.0.0.0/8",     // private
+		"172.16.0.0/12",  // private
+		"192.168.0.0/16", // private
+		"169.254.0.0/16", // link-local
+		"::1/128",        // localhost IPv6
+		"fe80::/10",      // link-local IPv6
+		"fc00::/7",       // unique local IPv6
+	}
+
+	for _, block := range privateBlocks {
+		_, cidr, _ := net.ParseCIDR(block)
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // handleGetPath handles GET requests to any arbitrary path
 func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -58,14 +110,29 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 	// Create a WaitGroup to wait for all goroutines to complete
 	var wg sync.WaitGroup
 
+	// Limit concurrent requests to prevent resource exhaustion
+	maxConcurrent := 10
+	semaphore := make(chan struct{}, maxConcurrent)
+
 	// Fetch URLs in parallel
 	for i, urlRec := range urls {
 		wg.Add(1)
 		go func(index int, urlRec db_model.URLRecord) {
 			defer wg.Done()
 
+			// Acquire semaphore to limit concurrency
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
 			result := map[string]interface{}{
 				"url": urlRec.URL,
+			}
+
+			// Validate URL before making request
+			if err := validateURL(urlRec.URL); err != nil {
+				result["error"] = err.Error()
+				resultChan <- urlResult{index: index, result: result}
+				return
 			}
 
 			// Create a context with timeout for the HTTP request
@@ -79,6 +146,9 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 				resultChan <- urlResult{index: index, result: result}
 				return
 			}
+
+			// Set a custom User-Agent
+			httpReq.Header.Set("User-Agent", "Guardz-URL-Fetcher/1.0")
 
 			// Create a custom HTTP client that handles redirects
 			client := &http.Client{
@@ -99,8 +169,10 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 				resultChan <- urlResult{index: index, result: result}
 				return
 			}
-			// Read response body
-			body, err := io.ReadAll(resp.Body)
+
+			// Read response body with size limit (1MB)
+			limitedReader := io.LimitReader(resp.Body, 1<<20) // 1MB limit
+			body, err := io.ReadAll(limitedReader)
 			cerr := resp.Body.Close()
 			if err != nil {
 				result["error"] = err.Error()
@@ -111,6 +183,11 @@ func (h *DynamicHandler) handleGetPath(w http.ResponseWriter, req *http.Request)
 				result["error"] = cerr.Error()
 				resultChan <- urlResult{index: index, result: result}
 				return
+			}
+
+			// Check if response was truncated due to size limit
+			if len(body) == 1<<20 {
+				result["warning"] = "Response truncated due to size limit (1MB)"
 			}
 
 			// Track redirect information
@@ -177,12 +254,44 @@ func (h *DynamicHandler) handlePostPath(w http.ResponseWriter, req *http.Request
 		http.Error(w, "No URLs provided", http.StatusBadRequest)
 		return
 	}
-	if err := h.DB.StoreURLsForPath(req.Context(), path, body.URLs); err != nil {
+
+	// Validate all URLs before storing
+	var validURLs []string
+	var invalidURLs []string
+	for _, urlStr := range body.URLs {
+		if err := validateURL(urlStr); err != nil {
+			invalidURLs = append(invalidURLs, fmt.Sprintf("%s: %s", urlStr, err.Error()))
+		} else {
+			validURLs = append(validURLs, urlStr)
+		}
+	}
+
+	// If all URLs are invalid, return error
+	if len(validURLs) == 0 {
+		http.Error(w, fmt.Sprintf("All URLs are invalid: %v", invalidURLs), http.StatusBadRequest)
+		return
+	}
+
+	// Store only valid URLs
+	if err := h.DB.StoreURLsForPath(req.Context(), path, validURLs); err != nil {
 		http.Error(w, "Failed to store URLs", http.StatusInternalServerError)
 		return
 	}
+
+	response := map[string]interface{}{
+		"message": "URLs stored successfully",
+		"path":    path,
+		"count":   len(validURLs),
+	}
+
+	// Include information about invalid URLs if any
+	if len(invalidURLs) > 0 {
+		response["invalid_urls"] = invalidURLs
+		response["warning"] = fmt.Sprintf("Some URLs were rejected: %d valid, %d invalid", len(validURLs), len(invalidURLs))
+	}
+
 	w.WriteHeader(http.StatusCreated)
-	err := json.NewEncoder(w).Encode(map[string]interface{}{"message": "URLs stored successfully", "path": path, "count": len(body.URLs)})
+	err := json.NewEncoder(w).Encode(response)
 	if err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
