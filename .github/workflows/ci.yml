@@ -176,4 +176,4 @@ jobs:
           script: |
             git clone https://github.com/shaibs3/Guardz.git
             cd Guardz
-            make compose-up
+            sudo make compose-up
