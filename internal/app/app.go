@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"github.com/shaibs3/Guardz/internal/handlers"
 	"github.com/shaibs3/Guardz/internal/router"
 	"golang.org/x/time/rate"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/shaibs3/Guardz/internal/config"
-	"github.com/shaibs3/Guardz/internal/finder"
 	"github.com/shaibs3/Guardz/internal/lookup"
 	"github.com/shaibs3/Guardz/internal/telemetry"
 	"go.uber.org/zap"
@@ -35,17 +35,26 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 
 	// Initialize IP DB provider
 	dbProviderFactory := lookup.NewDbProviderFactory(logger, tel)
-	dbProvider, err := dbProviderFactory.CreateProvider(cfg.IPDBConfig)
+	_, err = dbProviderFactory.CreateProvider(cfg.IPDBConfig)
 	if err != nil {
 		return nil, err
 	}
 	logger.Info("database provider initialized")
 
-	// Initialize router
+	// Initialize IP finder
+	//ipFinder := finder.NewIpFinder(dbProvider)
+
+	// Initialize router with handlers
 	var limiter = rate.NewLimiter(rate.Limit(cfg.RPSLimit), cfg.RPSBurst)
-	ipFinder := finder.NewIpFinder(dbProvider)
-	appRouter := router.NewRouter(limiter, tel, logger)
-	server := appRouter.CreateServer(":"+cfg.Port, ipFinder)
+
+	// Create handlers
+	handlerList := []router.Handler{
+		handlers.NewDynamicHandler(),
+		//handlers.NewIPHandler(ipFinder),
+	}
+
+	appRouter := router.NewRouter(limiter, tel, logger, handlerList)
+	server := appRouter.CreateServer(":" + cfg.Port)
 
 	return &App{
 		config:    cfg,
