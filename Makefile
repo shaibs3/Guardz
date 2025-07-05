@@ -6,6 +6,7 @@ DOCKER_TAG=latest
 DOCKER_USERNAME?=your-dockerhub-username
 DOCKER_REPO=$(DOCKER_USERNAME)/$(DOCKER_IMAGE)
 PORT=8080
+PG_CONN="postgresql://admin:admin@localhost:5432/guardz?sslmode=disable"
 
 # Build info variables
 VERSION ?= $(shell git describe --tags --always --dirty)
