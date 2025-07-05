@@ -8,6 +8,7 @@ import (
 	"github.com/shaibs3/Guardz/internal/db"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"strings"
 )
 
 type PostgresProvider struct {
@@ -51,16 +52,51 @@ func NewPostgresProvider(config DbProviderConfig, logger *zap.Logger, meter metr
 	}, nil
 }
 
-// StoreURLsForPath stores a list of URLs for a given path (no content)
+// StoreURLsForPath stores a list of URLs for a given path (atomic, bulk insert)
 func (p *PostgresProvider) StoreURLsForPath(ctx context.Context, path string, urls []string) error {
-	pathID, err := db.GetOrCreatePath(p.db, path)
+	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Get or create path inside the transaction
+	var pathID int64
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO paths (path) VALUES ($1)
+		ON CONFLICT (path) DO UPDATE SET path=EXCLUDED.path
+		RETURNING id
+	`, path).Scan(&pathID)
+	if err != nil {
+		tx.Rollback()
 		return fmt.Errorf("failed to get or create path: %w", err)
 	}
-	for _, url := range urls {
-		if err := db.InsertURLRecord(p.db, pathID, url); err != nil {
-			return fmt.Errorf("failed to insert url record: %w", err)
-		}
+
+	if len(urls) == 0 {
+		tx.Commit()
+		return nil
+	}
+
+	valueStrings := make([]string, 0, len(urls))
+	valueArgs := make([]interface{}, 0, len(urls))
+	for i, url := range urls {
+		valueStrings = append(valueStrings, fmt.Sprintf("($1, $%d)", i+2))
+		valueArgs = append(valueArgs, url)
+	}
+	args := append([]interface{}{pathID}, valueArgs...)
+	stmt := fmt.Sprintf("INSERT INTO urls (path_id, url) VALUES %s", strings.Join(valueStrings, ","))
+	_, err = tx.ExecContext(ctx, stmt, args...)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to bulk insert urls: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
 }
