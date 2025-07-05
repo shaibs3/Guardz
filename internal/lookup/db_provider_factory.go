@@ -3,6 +3,7 @@ package lookup
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/shaibs3/Guardz/internal/lookup/postgres"
 	"github.com/shaibs3/Guardz/internal/lookup/shared"
 

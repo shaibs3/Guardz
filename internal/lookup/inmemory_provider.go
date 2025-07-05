@@ -2,8 +2,9 @@ package lookup
 
 import (
 	"context"
-	"github.com/shaibs3/Guardz/internal/db_model"
 	"sync"
+
+	"github.com/shaibs3/Guardz/internal/db_model"
 )
 
 type InMemoryProvider struct {

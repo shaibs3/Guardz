@@ -2,9 +2,10 @@ package lookup
 
 import (
 	"encoding/json"
+	"testing"
+
 	"github.com/shaibs3/Guardz/internal/telemetry"
 	"go.uber.org/zap"
-	"testing"
 )
 
 func TestDbProviderFactory_CreateProvider_Memory(t *testing.T) {

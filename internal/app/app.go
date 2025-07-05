@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/shaibs3/Guardz/internal/handlers"
-	"github.com/shaibs3/Guardz/internal/router"
-	"golang.org/x/time/rate"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/shaibs3/Guardz/internal/handlers"
+	"github.com/shaibs3/Guardz/internal/router"
+	"golang.org/x/time/rate"
 
 	"github.com/shaibs3/Guardz/internal/config"
 	"github.com/shaibs3/Guardz/internal/lookup"

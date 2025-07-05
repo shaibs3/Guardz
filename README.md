@@ -14,6 +14,7 @@ A Go-based HTTP service that fetches and stores content from multiple URLs concu
 
 - Go 1.24.2 or higher
 - PostgreSQL database (see below for setup)
+- Docker & Docker Compose (for containerized deployment)
 
 ## Installation
 
@@ -45,6 +46,24 @@ The service will start on port 8080 by default. You can change the port by setti
 
 ```bash
 PORT=3000 go run cmd/main.go
+```
+
+### Docker Compose (Recommended)
+
+To run the service and PostgreSQL database together using Docker Compose:
+
+```bash
+make compose-up
+```
+
+This will:
+- Build the Docker image for the app
+- Start both the app and a PostgreSQL database container
+- Set up all required environment variables
+
+To stop the services:
+```bash
+make compose-down
 ```
 
 ## API Endpoints
@@ -86,20 +105,63 @@ curl http://localhost:8080/mytask
   "path": "mytask",
   "results": [
     {
-      "id": 1,
-      "path_id": 1,
       "url": "http://example.com",
       "content": "...",
-      "status_code": 200,
-      "fetched_at": "2024-01-01T12:00:00Z",
-      "error": null
+      "content_type": "text/html",
+      "status_code": 200
     },
     ...
   ]
 }
 ```
 
-- Replace `/mytask` with the path you used in the POST request.
+## Automated Testing & Load Test
+
+A test script is provided to verify the service's POST/GET functionality and data integrity.
+
+### Run the test script
+
+1. **Start the service (if not already running):**
+   ```bash
+   make compose-up
+   # or
+   docker-compose up --build
+   ```
+
+2. **Run the test script:**
+   ```bash
+   ./test_script.sh
+   # or
+   make test-load
+   ```
+
+This script will:
+- Send 100 POST requests with random paths and URLs
+- Send 100 GET requests to verify the data
+- Print a summary of successes/failures
+- Write detailed logs to `test_results.log`
+
+**You should see:**
+- All POST and GET requests succeed
+- All verifications pass (100%)
+
+## Stopping the Service
+
+To stop all containers:
+```bash
+make compose-down
+# or
+docker-compose down
+```
+
+## Troubleshooting
+- Ensure Docker and Docker Compose are installed and running
+- If you change environment variables, rebuild with `make compose-up` or `docker-compose up --build`
+- Check `test_results.log` for details if the test script reports failures
+
+---
+
+For further questions or contributions, please open an issue or pull request!
 
 ## Database Setup
 

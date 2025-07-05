@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/shaibs3/Guardz/internal/db_model"
 	"github.com/shaibs3/Guardz/internal/lookup/shared"
 	"github.com/sony/gobreaker"
@@ -10,7 +12,6 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"time"
 )
 
 type PostgresProvider struct {
