@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -29,24 +31,51 @@ func (h *DynamicHandler) RegisterRoutes(router *mux.Router, logger *zap.Logger) 
 // handleDynamicPath handles GET requests to any arbitrary path
 func (h *DynamicHandler) handleDynamicPath(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-
-	// Extract the path from the request (strip leading slash)
 	path := strings.TrimPrefix(req.URL.Path, "/")
 	if path == "" {
 		path = "/"
 	}
 
-	records, err := h.DB.GetURLsByPath(req.Context(), path)
+	urls, err := h.DB.GetURLsByPath(req.Context(), path)
 	if err != nil {
 		http.Error(w, "Failed to fetch records", http.StatusInternalServerError)
 		return
 	}
 
-	response := map[string]interface{}{
-		"path":    path,
-		"results": records,
+	results := make([]map[string]interface{}, 0, len(urls))
+	for _, urlRec := range urls {
+		result := map[string]interface{}{
+			"url": urlRec.URL,
+		}
+		resp, err := http.Get(urlRec.URL)
+		if err != nil {
+			result["error"] = err.Error()
+			results = append(results, result)
+			continue
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			result["error"] = err.Error()
+			results = append(results, result)
+			continue
+		}
+		contentType := resp.Header.Get("Content-Type")
+		result["content_type"] = contentType
+		result["status_code"] = resp.StatusCode
+		// If not text, encode as base64
+		if strings.HasPrefix(contentType, "text/") || strings.Contains(contentType, "json") || strings.Contains(contentType, "xml") {
+			result["content"] = string(body)
+		} else {
+			result["content"] = base64.StdEncoding.EncodeToString(body)
+		}
+		results = append(results, result)
 	}
 
+	response := map[string]interface{}{
+		"path":    path,
+		"results": results,
+	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
