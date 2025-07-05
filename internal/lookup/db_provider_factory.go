@@ -3,6 +3,8 @@ package lookup
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/shaibs3/Guardz/internal/lookup/postgres"
+	"github.com/shaibs3/Guardz/internal/lookup/shared"
 
 	"github.com/shaibs3/Guardz/internal/telemetry"
 	"go.opentelemetry.io/otel/metric"
@@ -28,7 +30,7 @@ func NewDbProviderFactory(logger *zap.Logger, tel *telemetry.Telemetry) *DbProvi
 }
 
 func (f *DbProviderFactory) CreateProvider(configJSON string) (DbProvider, error) {
-	var config DbProviderConfig
+	var config shared.DbProviderConfig
 	f.logger.Info("parsing configuration", zap.String("configJSON", configJSON))
 
 	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
@@ -52,9 +54,9 @@ func (f *DbProviderFactory) CreateProvider(configJSON string) (DbProvider, error
 		telemetryMeter = nil
 	}
 	switch config.DbType {
-	case DbTypePostgres:
-		return NewPostgresProvider(config, f.logger, telemetryMeter)
-	case DbTypeMemory:
+	case shared.DbTypePostgres:
+		return postgres.NewPostgresProvider(config, f.logger, telemetryMeter)
+	case shared.DbTypeMemory:
 		f.logger.Info("Using InMemoryProvider for DB")
 		return NewInMemoryProvider(), nil
 	default:
