@@ -2,46 +2,58 @@ package internal
 
 import (
 	"encoding/json"
+	"golang.org/x/time/rate"
 	"net/http"
 )
 
 // Router represents the HTTP router
 type Router struct {
-	mux *http.ServeMux
+	mux     *http.ServeMux
+	limiter *rate.Limiter
 }
 
 // NewRouter creates a new router instance
 func NewRouter() *Router {
 	return &Router{
-		mux: http.NewServeMux(),
+		mux:     http.NewServeMux(),
+		limiter: rate.NewLimiter(5, 2), // 5 requests per second, burst of 2
 	}
 }
 
 // SetupRoutes configures all the routes for the router
 func (r *Router) SetupRoutes() {
-	r.mux.HandleFunc("POST /api/example", r.handleExample)
+	// Handle all GET requests to any path
+	r.mux.HandleFunc("GET /{path...}", r.handleDynamicPath)
 }
 
-// handleExample handles POST requests to /api/example
-func (r *Router) handleExample(w http.ResponseWriter, req *http.Request) {
-	// Set response headers
-	w.Header().Set("Content-Type", "application/json")
-
-	// Parse request body (example)
-	var requestBody map[string]interface{}
-	if err := json.NewDecoder(req.Body).Decode(&requestBody); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+// handleDynamicPath handles GET requests to any arbitrary path
+func (r *Router) handleDynamicPath(w http.ResponseWriter, req *http.Request) {
+	// Check rate limit
+	if !r.limiter.Allow() {
+		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 		return
 	}
 
+	// Set response headers
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get the path from the request
+	path := req.URL.Path
+
 	// Create response
 	response := map[string]interface{}{
-		"message": "POST request received successfully",
-		"data":    requestBody,
+		"message": "GET request received successfully",
+		"method":  "GET",
+		"path":    path,
+		"url":     req.URL.String(),
+		"host":    req.Host,
 	}
 
 	// Send response
-	json.NewEncoder(w).Encode(response)
+	err := json.NewEncoder(w).Encode(response)
+	if err != nil {
+		return
+	}
 }
 
 // ServeHTTP implements the http.Handler interface

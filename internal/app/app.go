@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"github.com/shaibs3/Guardz/internal/router"
+	"golang.org/x/time/rate"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/shaibs3/Guardz/internal/limiter"
 
 	"github.com/shaibs3/Guardz/internal/config"
 	"github.com/shaibs3/Guardz/internal/finder"
@@ -43,9 +42,9 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 	logger.Info("database provider initialized")
 
 	// Initialize router
-	rateLimiter := limiter.NewBurstRateLimiter(cfg.RPSLimit, cfg.RPSBurst, logger)
+	var limiter = rate.NewLimiter(rate.Limit(cfg.RPSLimit), cfg.RPSBurst)
 	ipFinder := finder.NewIpFinder(dbProvider)
-	appRouter := router.NewRouter(rateLimiter, tel, logger)
+	appRouter := router.NewRouter(limiter, tel, logger)
 	server := appRouter.CreateServer(":"+cfg.Port, ipFinder)
 
 	return &App{

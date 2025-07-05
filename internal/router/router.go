@@ -1,6 +1,7 @@
 package router
 
 import (
+	"golang.org/x/time/rate"
 	"net/http"
 	"strconv"
 	"time"
@@ -8,7 +9,6 @@ import (
 	"github.com/shaibs3/Guardz/internal/telemetry"
 
 	"github.com/shaibs3/Guardz/internal/finder"
-	"github.com/shaibs3/Guardz/internal/limiter"
 	"github.com/shaibs3/Guardz/internal/service_health"
 
 	"github.com/gorilla/mux"
@@ -21,13 +21,13 @@ import (
 // Router handles all routing logic and middleware setup
 type Router struct {
 	router        *mux.Router
-	rateLimiter   limiter.RateLimiter
+	rateLimiter   *rate.Limiter
 	logger        *zap.Logger
 	routerMetrics *HTTPMetrics
 }
 
 // NewRouter creates a new router instance
-func NewRouter(rateLimiter limiter.RateLimiter, telemetry *telemetry.Telemetry, logger *zap.Logger) *Router {
+func NewRouter(rateLimiter *rate.Limiter, telemetry *telemetry.Telemetry, logger *zap.Logger) *Router {
 	httpMetrics := NewHTTPMetrics(telemetry.Meter, logger.Named("metrics"))
 
 	r := &Router{
