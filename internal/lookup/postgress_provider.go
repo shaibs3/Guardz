@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"github.com/avast/retry-go"
 	"github.com/lib/pq"
-	_ "github.com/lib/pq"
-	"github.com/shaibs3/Guardz/internal/db"
+	"github.com/shaibs3/Guardz/internal/db_model"
 	"github.com/sony/gobreaker"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -44,7 +43,7 @@ func NewPostgresProvider(config DbProviderConfig, logger *zap.Logger, meter metr
 	}
 
 	// Automatically create tables if they do not exist
-	if _, err := dbConn.Exec(db.Schema); err != nil {
+	if _, err := dbConn.Exec(db_model.Schema); err != nil {
 		pgLogger.Error("failed to create initial tables", zap.Error(err))
 		return nil, fmt.Errorf("failed to create initial tables: %w", err)
 	}
@@ -159,17 +158,17 @@ func (p *PostgresProvider) StoreURLsForPath(ctx context.Context, path string, ur
 }
 
 // GetURLsByPath returns all URL records for a given path (with circuit breaker and retry)
-func (p *PostgresProvider) GetURLsByPath(ctx context.Context, path string) ([]db.URLRecord, error) {
-	var result []db.URLRecord
+func (p *PostgresProvider) GetURLsByPath(ctx context.Context, path string) ([]db_model.URLRecord, error) {
+	var result []db_model.URLRecord
 	var opErr error
 	err := retry.Do(
 		func() error {
 			res, err := p.cb.Execute(func() (interface{}, error) {
-				recs, err := db.GetURLsByPath(p.db, path)
+				recs, err := p.getURLsByPath(path)
 				return recs, err
 			})
 			if err == nil {
-				result = res.([]db.URLRecord)
+				result = res.([]db_model.URLRecord)
 			}
 			opErr = err
 			return err
@@ -184,4 +183,33 @@ func (p *PostgresProvider) GetURLsByPath(ctx context.Context, path string) ([]db
 		return nil, err
 	}
 	return result, opErr
+}
+
+func (p *PostgresProvider) getURLsByPath(path string) ([]db_model.URLRecord, error) {
+	var records []db_model.URLRecord
+	rows, err := p.db.Query(`
+		SELECT u.id, u.path_id, u.url
+		FROM urls u
+		JOIN paths p ON u.path_id = p.id
+		WHERE p.path = $1
+		ORDER BY u.id ASC
+	`, path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		cerr := rows.Close()
+		if cerr != nil {
+			fmt.Print("Error closing rows: ", cerr)
+		}
+	}()
+	for rows.Next() {
+		var rec db_model.URLRecord
+		err := rows.Scan(&rec.ID, &rec.PathID, &rec.URL)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, rec)
+	}
+	return records, nil
 }

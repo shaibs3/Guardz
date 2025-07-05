@@ -2,7 +2,7 @@ package lookup
 
 import (
 	"context"
-	"github.com/shaibs3/Guardz/internal/db"
+	"github.com/shaibs3/Guardz/internal/db_model"
 	"sync"
 )
 
@@ -34,7 +34,7 @@ func (m *InMemoryProvider) StoreURLsForPath(ctx context.Context, path string, ur
 	return nil
 }
 
-func (m *InMemoryProvider) GetURLsByPath(ctx context.Context, path string) ([]db.URLRecord, error) {
+func (m *InMemoryProvider) GetURLsByPath(ctx context.Context, path string) ([]db_model.URLRecord, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	id, ok := m.paths[path]
@@ -42,9 +42,9 @@ func (m *InMemoryProvider) GetURLsByPath(ctx context.Context, path string) ([]db
 		return nil, nil
 	}
 	urls := m.urls[id]
-	records := make([]db.URLRecord, 0, len(urls))
+	records := make([]db_model.URLRecord, 0, len(urls))
 	for i, url := range urls {
-		records = append(records, db.URLRecord{
+		records = append(records, db_model.URLRecord{
 			ID:     int64(i + 1),
 			PathID: id,
 			URL:    url,

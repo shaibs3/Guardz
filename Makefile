@@ -159,6 +159,6 @@ help:
 	@echo "  db-clean      - Truncate all tables in the Postgres database"
 	@echo "  help          - Show this help message"
 
-## db-clean target
+## db_model-clean target
 db-clean:
 	psql "$(PG_CONN)" -c "TRUNCATE TABLE urls, paths RESTART IDENTITY CASCADE;"
