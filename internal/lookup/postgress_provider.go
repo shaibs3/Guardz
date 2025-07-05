@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 	_ "github.com/lib/pq"
+	"github.com/shaibs3/Guardz/internal/db"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"io"
+	"net/http"
 	"time"
 )
 
@@ -66,4 +69,88 @@ func (p *PostgresProvider) Lookup(ctx context.Context, ip string) (string, strin
 		zap.String("country", country))
 
 	return city, country, nil
+}
+
+// StoreURLsForPath stores a list of URLs for a given path
+func (p *PostgresProvider) StoreURLsForPath(ctx context.Context, path string, urls []string) error {
+	pathID, err := db.GetOrCreatePath(p.db, path)
+	if err != nil {
+		return fmt.Errorf("failed to get or create path: %w", err)
+	}
+	for _, url := range urls {
+		// Fetch the URL content
+		resp, err := fetchURL(ctx, url)
+		if err != nil {
+			return fmt.Errorf("failed to fetch url %s: %w", url, err)
+		}
+		rec := db.URLRecord{
+			PathID:     pathID,
+			URL:        url,
+			Content:    resp.Content,
+			StatusCode: resp.StatusCode,
+			FetchedAt:  resp.FetchedAt,
+			Error:      resp.Error,
+		}
+		if err := db.InsertURLRecord(p.db, rec); err != nil {
+			return fmt.Errorf("failed to insert url record: %w", err)
+		}
+	}
+	return nil
+}
+
+// GetURLsByPath returns all URL records for a given path
+func (p *PostgresProvider) GetURLsByPath(ctx context.Context, path string) ([]db.URLRecord, error) {
+	return db.GetURLsByPath(p.db, path)
+}
+
+// fetchURL fetches the content of a URL and returns a struct for storage
+func fetchURL(ctx context.Context, url string) (struct {
+	Content    string
+	StatusCode int
+	FetchedAt  time.Time
+	Error      *string
+}, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		errStr := err.Error()
+		return struct {
+			Content    string
+			StatusCode int
+			FetchedAt  time.Time
+			Error      *string
+		}{
+			Content:    "",
+			StatusCode: 0,
+			FetchedAt:  time.Now(),
+			Error:      &errStr,
+		}, nil
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		errStr := err.Error()
+		return struct {
+			Content    string
+			StatusCode int
+			FetchedAt  time.Time
+			Error      *string
+		}{
+			Content:    "",
+			StatusCode: resp.StatusCode,
+			FetchedAt:  time.Now(),
+			Error:      &errStr,
+		}, nil
+	}
+	return struct {
+		Content    string
+		StatusCode int
+		FetchedAt  time.Time
+		Error      *string
+	}{
+		Content:    string(body),
+		StatusCode: resp.StatusCode,
+		FetchedAt:  time.Now(),
+		Error:      nil,
+	}, nil
 }
