@@ -89,8 +89,8 @@ func (p *PostgresProvider) GetURLsByPath(ctx context.Context, path string) ([]db
 	records := make([]db_model.URLRecord, len(urls))
 	for i, url := range urls {
 		records[i] = db_model.URLRecord{
-			ID:     int64(url.ID),
-			PathID: int64(url.PathID),
+			ID:     url.ID,
+			PathID: url.PathID,
 			URL:    url.URL,
 		}
 	}

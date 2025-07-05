@@ -9,15 +9,15 @@ import (
 
 type InMemoryProvider struct {
 	mu     sync.RWMutex
-	paths  map[string]int64
-	urls   map[int64][]string
-	nextID int64
+	paths  map[string]uint64
+	urls   map[uint64][]string
+	nextID uint64
 }
 
 func NewInMemoryProvider() *InMemoryProvider {
 	return &InMemoryProvider{
-		paths:  make(map[string]int64),
-		urls:   make(map[int64][]string),
+		paths:  make(map[string]uint64),
+		urls:   make(map[uint64][]string),
 		nextID: 1,
 	}
 }
@@ -46,7 +46,7 @@ func (m *InMemoryProvider) GetURLsByPath(ctx context.Context, path string) ([]db
 	records := make([]db_model.URLRecord, 0, len(urls))
 	for i, url := range urls {
 		records = append(records, db_model.URLRecord{
-			ID:     int64(i + 1),
+			ID:     uint64(i + 1), // #nosec G115
 			PathID: id,
 			URL:    url,
 		})

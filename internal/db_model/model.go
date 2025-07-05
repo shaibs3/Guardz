@@ -2,14 +2,14 @@ package db_model
 
 // Path represents a unique path
 type Path struct {
-	ID   int64  `db_model:"id" json:"id"`
+	ID   uint64 `db_model:"id" json:"id"`
 	Path string `db_model:"path" json:"path"`
 }
 
 // URLRecord represents a fetched URL and its content
 type URLRecord struct {
-	ID     int64  `db_model:"id" json:"id"`
-	PathID int64  `db_model:"path_id" json:"path_id"`
+	ID     uint64 `db_model:"id" json:"id"`
+	PathID uint64 `db_model:"path_id" json:"path_id"`
 	URL    string `db_model:"url" json:"url"`
 }
 
