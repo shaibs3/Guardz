@@ -358,7 +358,83 @@ go test ./internal/lookup -v
 
 ## Observability
 
-### Metrics
+The service exposes comprehensive metrics via Prometheus at `/metrics` endpoint for monitoring and observability.
+
+### Available Metrics
+
+#### HTTP Metrics
+
+- **`http_request_duration_seconds`** (histogram):
+  Duration of HTTP requests in seconds. Includes labels for `method`, `path`, and `status_code`.
+
+- **`http_requests_total`** (counter):
+  Total number of HTTP requests. Includes labels for `method`, `path`, and `status_code`.
+
+- **`http_error_requests_total`** (counter):
+  Total number of HTTP error requests (4xx, 5xx status codes). Includes labels for `method`, `path`, and `status_code`.
+
+- **`http_response_status_total`** (counter):
+  Total number of HTTP responses by status code. Includes label for `status_code`.
+
+- **`http_requests_in_flight`** (updown counter):
+  Number of HTTP requests currently in flight (active requests).
+
+- **`http_rate_limited_requests_total`** (counter):
+  Total number of HTTP requests that were rate limited.
+
+#### Database Metrics
+
+- **`ip_lookup_duration_seconds`** (histogram):
+  Duration of database operations in seconds. Useful for monitoring database performance.
+
+- **`ip_lookup_errors_total`** (counter):
+  Total number of database operation errors. Useful for alerting on data issues.
+
+#### Business Metrics
+
+The service tracks URL fetching performance and success rates through the HTTP metrics above, providing insights into:
+- URL fetch success/failure rates
+- Response times for different content types
+- Redirect handling performance
+- Content size distribution
+
+### Metrics Endpoint
+
+**Endpoint:** `GET /metrics`
+
+**Description:** Exposes Prometheus-formatted metrics for monitoring and alerting.
+
+**Example Request:**
+```bash
+curl "http://localhost:8080/metrics"
+```
+
+**Example Output:**
+```
+# HELP http_request_duration_seconds HTTP request duration in seconds
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{method="GET",path="/my-path",status_code="200",le="0.1"} 15
+http_request_duration_seconds_bucket{method="GET",path="/my-path",status_code="200",le="0.5"} 25
+http_request_duration_seconds_bucket{method="GET",path="/my-path",status_code="200",le="1"} 30
+http_request_duration_seconds_bucket{method="GET",path="/my-path",status_code="200",le="+Inf"} 30
+
+# HELP http_requests_total Total number of HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{method="GET",path="/my-path",status_code="200"} 30
+http_requests_total{method="POST",path="/my-path",status_code="201"} 15
+
+# HELP http_rate_limited_requests_total Total number of HTTP requests that were rate limited
+# TYPE http_rate_limited_requests_total counter
+http_rate_limited_requests_total 5
+```
+
+### Monitoring Integration
+
+These metrics can be integrated with:
+- **Prometheus**: For metrics collection and storage
+- **Grafana**: For visualization and dashboards
+- **AlertManager**: For alerting on thresholds
+- **Kubernetes**: For pod and service monitoring
 
 
 
