@@ -8,6 +8,7 @@ A Go-based microservice that provides URL content aggregation functionality thro
 - 🔄 **Redirect Handling**: Automatic redirect following with loop protection
 - 📊 **Multiple Content Types**: Support for JSON, images, text, HTML with proper encoding
 - 🚦 **Concurrent Request Limiting**: Configurable concurrency to prevent resource exhaustion
+- 🚦 **Rate Limiting**: Configurable request rate limiting to prevent abuse
 - 🐳 **Docker support** with docker-compose
 - 🧪 **Comprehensive testing** with security validation
 - 📈 **OpenTelemetry metrics** and observability
@@ -273,6 +274,34 @@ export DB_CONFIG='{"dbtype": "postgres", "extra_details": {"conn_str": "postgres
 | `RPS_LIMIT` | Rate limiting (requests per second)   | `100`   |
 | `RPS_BURST` | Rate limiting burst                   | `200`   |
 | `LOG_LEVEL` | Log level                             | `info`  |
+
+### Rate Limiting Configuration
+
+The service implements configurable rate limiting to prevent abuse and ensure fair usage:
+
+- **RPS_LIMIT**: Maximum requests per second (default: 100)
+- **RPS_BURST**: Maximum burst requests allowed (default: 200)
+
+**Example configurations:**
+
+**Conservative rate limiting (for shared environments):**
+```bash
+export RPS_LIMIT=10
+export RPS_BURST=20
+```
+
+**High throughput (for dedicated servers):**
+```bash
+export RPS_LIMIT=1000
+export RPS_BURST=2000
+```
+
+**Docker Compose configuration:**
+```yaml
+environment:
+  RPS_LIMIT: 100
+  RPS_BURST: 200
+```
 
 ### Available Make Commands
 
