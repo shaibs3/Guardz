@@ -25,9 +25,13 @@ func setupTestHandler() *DynamicHandler {
 // allowlistTestServer adds the test server's host to the allowlist for SSRF validation
 func allowlistTestServer(t *testing.T, serverURL string) func() {
 	host := strings.Split(strings.TrimPrefix(serverURL, "http://"), ":")[0]
-	os.Setenv("GUARDZ_TEST_ALLOWLIST", host)
+	if err := os.Setenv("GUARDZ_TEST_ALLOWLIST", host); err != nil {
+		t.Fatalf("failed to set environment variable: %v", err)
+	}
 	return func() {
-		os.Unsetenv("GUARDZ_TEST_ALLOWLIST")
+		if err := os.Unsetenv("GUARDZ_TEST_ALLOWLIST"); err != nil {
+			t.Errorf("failed to unset environment variable: %v", err)
+		}
 	}
 }
 
@@ -353,8 +357,14 @@ func TestDynamicHandler_RealURLsContentTypes(t *testing.T) {
 
 	// Allowlist the test server's host
 	host := "httpbin.org"
-	os.Setenv("GUARDZ_TEST_ALLOWLIST", host)
-	defer os.Unsetenv("GUARDZ_TEST_ALLOWLIST")
+	if err := os.Setenv("GUARDZ_TEST_ALLOWLIST", host); err != nil {
+		t.Fatalf("failed to set environment variable: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("GUARDZ_TEST_ALLOWLIST"); err != nil {
+			t.Errorf("failed to unset environment variable: %v", err)
+		}
+	}()
 
 	h := setupTestHandler()
 	r := mux.NewRouter()

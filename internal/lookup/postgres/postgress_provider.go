@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PostgresProvider struct {
@@ -56,17 +57,22 @@ func NewPostgresProvider(config shared.DbProviderConfig, logger *zap.Logger, met
 	}, nil
 }
 
-// Example: StoreURLsForPath using GORM (for demonstration)
+// StoreURLsForPath stores URLs for a path with row-level locking to prevent race conditions
 func (p *PostgresProvider) StoreURLsForPath(ctx context.Context, path string, urls []string) error {
 	return p.gormDB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var pth GormPath
-		if err := tx.Where("path = ?", path).FirstOrCreate(&pth, GormPath{Path: path}).Error; err != nil {
+		// Use FOR UPDATE to lock the row during write operations
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("path = ?", path).FirstOrCreate(&pth, GormPath{Path: path}).Error; err != nil {
 			return err
 		}
+
 		// Remove old URLs for idempotency
 		if err := tx.Where("path_id = ?", pth.ID).Delete(&GormURL{}).Error; err != nil {
 			return err
 		}
+
+		// Create new URL records
 		urlObjs := make([]GormURL, len(urls))
 		for i, u := range urls {
 			urlObjs[i] = GormURL{PathID: pth.ID, URL: u}
@@ -75,11 +81,15 @@ func (p *PostgresProvider) StoreURLsForPath(ctx context.Context, path string, ur
 	})
 }
 
+// GetURLsByPath retrieves URLs for a path with row-level locking to ensure consistency
 func (p *PostgresProvider) GetURLsByPath(ctx context.Context, path string) ([]db_model.URLRecord, error) {
 	var pth GormPath
-	if err := p.gormDB.WithContext(ctx).Where("path = ?", path).First(&pth).Error; err != nil {
+	// Use FOR SHARE to prevent writes during read operations
+	if err := p.gormDB.WithContext(ctx).Clauses(clause.Locking{Strength: "SHARE"}).
+		Where("path = ?", path).First(&pth).Error; err != nil {
 		return nil, nil // Not found is not an error
 	}
+
 	var urls []GormURL
 	if err := p.gormDB.WithContext(ctx).Where("path_id = ?", pth.ID).Find(&urls).Error; err != nil {
 		return nil, err
