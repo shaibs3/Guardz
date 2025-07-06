@@ -428,14 +428,6 @@ http_requests_total{method="POST",path="/my-path",status_code="201"} 15
 http_rate_limited_requests_total 5
 ```
 
-### Monitoring Integration
-
-These metrics can be integrated with:
-- **Prometheus**: For metrics collection and storage
-- **Grafana**: For visualization and dashboards
-- **AlertManager**: For alerting on thresholds
-- **Kubernetes**: For pod and service monitoring
-
 
 
 
