@@ -15,6 +15,7 @@ A Go-based microservice that provides URL content aggregation functionality thro
 - 🔍 **Security scanning** with gosec and govulncheck
 - 🚀 **Full CI/CD GitHub Actions pipeline** with Docker Hub image publishing
 - 🗄️ **Flexible Database Backend**: PostgreSQL and in-memory providers
+- 🛡️ **Circuit Breaker Protection**: Automatic circuit breaker for database operations to improve resilience
 
 ## Quick Start
 
