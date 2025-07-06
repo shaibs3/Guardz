@@ -98,7 +98,7 @@ docker-build:
 docker-run:docker-build
 	@echo "Running Docker container..."
 	docker run -p $(PORT):$(PORT) --name $(BINARY_NAME) \
-		-e DB_CONFIG='{"dbtype": "csv", "extra_details": {"file_path": "/app/TestFiles/ip_data.csv"}}' \
+		-e DB_CONFIG='{"dbtype": "postgres", "extra_details": {"conn_str": "postgresql://admin:admin@localhost:5432/guardz?sslmode=disable"}}' \
 		$(DOCKER_IMAGE):$(DOCKER_TAG)
 
 ## Docker stop

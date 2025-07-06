@@ -16,11 +16,11 @@ func ReadinessHandler(logger *zap.Logger) http.HandlerFunc {
 
 		// Check if the provider is properly initialized
 		// This is a placeholder check; replace with actual provider initialization logic
-		backend := os.Getenv("IP_DB_PROVIDER")
+		backend := os.Getenv("DB_PROVIDER")
 		status := "ready"
 		if backend == "" {
 			status = "not ready"
-			logger.Warn("service not ready - missing IP_DB_PROVIDER configuration")
+			logger.Warn("service not ready - missing DB_PROVIDER configuration")
 		}
 
 		response := HealthResponse{

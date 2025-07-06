@@ -45,7 +45,7 @@ A Go-based microservice that provides URL content aggregation functionality thro
    # Copy the example environment file
    cp .env_example .env
    
-   # Edit the .env file with your configuration
+   # Or edit the .env file with your configuration
    
    DB_CONFIG='{"dbtype": "postgres", "extra_details": {"conn_str": "postgresql://admin:admin@localhost:5432/guardz?sslmode=disable"}}'
   
