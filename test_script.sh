@@ -3,7 +3,15 @@
 # Test script for Guardz URL service
 # Sends 100 POST requests with paths and URLs, then verifies with GET requests
 
-BASE_URL="http://localhost:8080"
+# Check if remote parameter is provided
+if [ "$1" = "remote" ]; then
+    BASE_URL="http://34.55.142.196:8080"
+    echo "Using remote server: $BASE_URL"
+else
+    BASE_URL="http://localhost:8080"
+    echo "Using local server: $BASE_URL"
+fi
+
 TOTAL_REQUESTS=100
 LOG_FILE="test_results.log"
 
