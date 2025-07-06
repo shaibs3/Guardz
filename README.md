@@ -12,7 +12,7 @@ A Go-based microservice that provides URL content aggregation functionality thro
 - 🐳 **Docker support** with docker-compose
 - 🧪 **Comprehensive testing** with security validation
 - 📈 **OpenTelemetry metrics** and observability
-- 🔍 **Security scanning** with gosec and govulncheck
+- 🔍 **Security scanning** with gosec and Trivy
 - 🚀 **Full CI/CD GitHub Actions pipeline** with Docker Hub image publishing
 - 🗄️ **Flexible Database Backend**: PostgreSQL and in-memory providers
 - 🛡️ **Circuit Breaker Protection**: Automatic circuit breaker for database operations to improve resilience
